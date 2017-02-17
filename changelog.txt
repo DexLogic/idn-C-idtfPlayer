@@ -1,0 +1,11 @@
+
+1.0.1 (2017-02-17)
+- Fixed some compiler warnings on Visual Studio 2015
+- GitHub release
+
+1.0.0 (2016-11-11)
+- Windows Port
+- Linux: Time stamp improvements (monotonic clock)
+- Commandline parameter for jitter-free (scan once) output
+- Commandline parameter for single frame hold time
+
