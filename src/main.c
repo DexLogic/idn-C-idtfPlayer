@@ -54,7 +54,6 @@ typedef unsigned long in_addr_t;
 
 
 // Project headers
-#include "idn.h"
 #include "idn-hello.h"
 #include "idn-stream.h"
 #include "idtf.h"
@@ -247,7 +246,7 @@ void binDump(void *buffer, unsigned length)
     char *src = (char *)buffer;
     unsigned k = 0;
 
-    printf("dump buffer %08X; %d Bytes\n", (unsigned)buffer, length);
+    printf("dump buffer %08X; %d Bytes\n", (uint32_t)(uintptr_t)buffer, length);
 
     while(k < length)
     {
@@ -752,7 +751,7 @@ int main(int argc, char **argv)
     // Initialize driver function context
     IDNCONTEXT ctx = { 0 };
     ctx.serverSockAddr.sin_family      = AF_INET;
-    ctx.serverSockAddr.sin_port        = htons(IDN_PORT);
+    ctx.serverSockAddr.sin_port        = htons(IDNVAL_HELLO_UDP_PORT);
     ctx.serverSockAddr.sin_addr.s_addr = helloServerAddr;
     ctx.usFrameTime = 1000000 / frameRate;
     ctx.jitterFreeFlag = jitterFreeFlag;

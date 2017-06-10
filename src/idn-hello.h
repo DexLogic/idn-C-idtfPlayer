@@ -29,8 +29,9 @@
 //  12/2015 Dirk Apitz, Service map
 //  05/2016 Dirk Apitz, Generic data types
 //  01/2017 Dirk Apitz, ServiceMap
+//  06/2017 Dirk Apitz, moved udp port to hello header
 //
-//  Version: 2017-02-17
+//  Version: 2017-06-10
 // -------------------------------------------------------------------------------------------------
 
 
@@ -45,6 +46,9 @@
 // -------------------------------------------------------------------------------------------------
 //  Defines
 // -------------------------------------------------------------------------------------------------
+
+// UDP protocol
+#define IDNVAL_HELLO_UDP_PORT               7255
 
 // Packet commands
 #define IDNCMD_VOID                         0x00
@@ -112,11 +116,6 @@ typedef struct _IDNHDR_SERVICEMAP_ENTRY
     uint8_t name[20];                           // Not terminated, shorter names padded with '\0'
 
 } IDNHDR_SERVICEMAP_ENTRY;
-
-
-
-// Icon
-// ??? Properties: Wavelength
 
 
 
