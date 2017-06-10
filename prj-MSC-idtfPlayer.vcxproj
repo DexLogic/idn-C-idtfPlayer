@@ -67,7 +67,7 @@
   <ItemGroup>
     <ClInclude Include="src/idn-hello.h" />
     <ClInclude Include="src/idn-stream.h" />
-    <ClInclude Include="src/idn.h" />
+    <ClInclude Include="src/plt-windows.h" />
     <ClInclude Include="src/idtf.h" />
   </ItemGroup>
   <ItemGroup>

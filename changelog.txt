@@ -1,4 +1,8 @@
 
+1.1.0 (2017-06-10)
+- IDN header update
+- Platform specific inline functions in separate header files
+
 1.0.1 (2017-02-17)
 - Fixed some compiler warnings on Visual Studio 2015
 - GitHub release

@@ -1,2 +1,2 @@
 mkdir -p bin-linux
-g++ -Wall -Wno-unused src/main.c src/idtf.c -o bin-linux/idtfPlayer
+g++ -Wall -Wno-unused src/main.c src/idtf.c src/plt-posix.c -o bin-linux/idtfPlayer
