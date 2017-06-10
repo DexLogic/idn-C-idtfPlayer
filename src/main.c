@@ -37,26 +37,19 @@
 
 // Platform includes
 #if defined(_WIN32) || defined(WIN32)
-#include "plt-windows.h"
-#else
-#include "plt-posix.h"
-#endif
 
+    #include <windows.h>
+    #include <tchar.h>
 
-
-// Platform
-#if defined(_WIN32) || defined(WIN32)
-
-#include <windows.h>
-#include <tchar.h>
-
-typedef unsigned long in_addr_t;
+    #include "plt-windows.h"
 
 #else
 
-#include <stdlib.h>
-#include <string.h>
-#include <arpa/inet.h>
+    #include <stdlib.h>
+    #include <string.h>
+    #include <arpa/inet.h>
+
+    #include "plt-posix.h"
 
 #endif
 
