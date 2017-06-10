@@ -35,6 +35,13 @@
 #include <string.h>
 #include <stdint.h>
 
+// Platform includes
+#if defined(_WIN32) || defined(WIN32)
+#include "plt-windows.h"
+#else
+#include "plt-posix.h"
+#endif
+
 // Module header
 #include "idtf.h"
 
@@ -623,14 +630,12 @@ int idtfRead(char *filename, float xyScale, unsigned options, IDTF_CALLBACK_FUNC
     float yScale = (options & IDTFOPT_MIRROR_Y) ? -xyScale : xyScale;
 
     // Open the passed file
-    FILE *fpIDTF = (FILE *)NULL;
-    #if defined(_WIN32) || defined(WIN32)
-    errno_t err = fopen_s(&fpIDTF, filename, "rb");
-    if(err != 0) { logError("[IDTF] %s: Cannot open file", filename); return -1; }
-    #else
-    fpIDTF = fopen(filename, "rb");
-    if(!fpIDTF) { logError("[IDTF] %s: Cannot open file", filename); return -1; }
-    #endif
+    FILE *fpIDTF = plt_fopen(filename, "rb");
+    if(!fpIDTF) 
+    {
+        logError("[IDTF] %s: Cannot open file (err = %d)", filename, plt_getLastError());
+        return -1;
+    }
 
 
     // Structure of each section:

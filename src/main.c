@@ -32,10 +32,19 @@
 // Standard libraries
 #include <stdio.h>
 #include <stdarg.h>
-#include <errno.h>
 #include <stdint.h>
-#include <time.h>
 
+
+// Platform includes
+#if defined(_WIN32) || defined(WIN32)
+#include "plt-windows.h"
+#else
+#include "plt-posix.h"
+#endif
+
+
+
+// Platform
 #if defined(_WIN32) || defined(WIN32)
 
 #include <windows.h>
@@ -46,7 +55,6 @@ typedef unsigned long in_addr_t;
 #else
 
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
 
@@ -107,20 +115,6 @@ typedef struct
 
 
 // -------------------------------------------------------------------------------------------------
-//  Variables
-// -------------------------------------------------------------------------------------------------
-
-#if defined(_WIN32) || defined(WIN32)
-
-#else
-
-static struct timespec tsRef;
-static uint32_t currTimeUS = 0;
-
-#endif
-
-
-// -------------------------------------------------------------------------------------------------
 //  Tools
 // -------------------------------------------------------------------------------------------------
 
@@ -146,65 +140,6 @@ void logInfo(const char *fmt, ...)
     printf("\n");
     fflush(stdout);
 }
-
-
-#if defined(_WIN32) || defined(WIN32)
-
-static uint32_t getSystemTimeUS(void)
-{
-    ULARGE_INTEGER ul;
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-
-    // Fill ULARGE_INTEGER low and high parts.
-    ul.LowPart = ft.dwLowDateTime;
-    ul.HighPart = ft.dwHighDateTime;
-
-    // Convert to microseconds (FILETIME is in 100 nanosecont intervals).
-    return (uint32_t)(ul.QuadPart / 10ULL);
-}
-
-void usleep(__int64 usec)
-{
-    HANDLE timer;
-    LARGE_INTEGER ft;
-
-    // Convert to 100 nanosecond interval, negative value indicates relative time
-    ft.QuadPart = -(10 * usec);
-    timer = CreateWaitableTimer(NULL, TRUE, NULL);
-    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-    WaitForSingleObject(timer, INFINITE);
-    CloseHandle(timer);
-}
-
-#else
-
-static uint32_t getSystemTimeUS()
-{
-    // Get current time
-    struct timespec tsNow, tsDiff;
-    clock_gettime(CLOCK_MONOTONIC, &tsNow);
-
-    // Determine difference to reference time
-	if(tsNow.tv_nsec < tsRef.tv_nsec) 
-    {
-		tsDiff.tv_sec = (tsNow.tv_sec - tsRef.tv_sec) - 1;
-		tsDiff.tv_nsec = (1000000000 + tsNow.tv_nsec) - tsRef.tv_nsec;
-	} 
-    else 
-    {
-		tsDiff.tv_sec = tsNow.tv_sec - tsRef.tv_sec;
-		tsDiff.tv_nsec = tsNow.tv_nsec - tsRef.tv_nsec;
-	}
-
-    // Update internal counters
-    currTimeUS += (uint32_t)((tsDiff.tv_sec * 1000000) + (tsDiff.tv_nsec / 1000));
-    tsRef = tsNow;
-
-    return currTimeUS;
-}
-
-#endif
 
 
 static int ensureBufferCapacity(IDNCONTEXT *ctx, unsigned minLen)
@@ -294,18 +229,13 @@ static int idnSend(void *context, IDNHDR_PACKET *packetHdr, unsigned packetLen)
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
 
 /*
-    printf("\n%u\n", (getSystemTimeUS() - ctx->startTime) / 1000);
+    printf("\n%u\n", (plt_getSystemTimeUS() - ctx->startTime) / 1000);
     binDump(packetHdr, packetLen);
 */
 
     if(sendto(ctx->fdSocket, (const char *)packetHdr, packetLen, 0, (struct sockaddr *)&ctx->serverSockAddr, sizeof(ctx->serverSockAddr)) < 0)
     {
-        #if defined(_WIN32) || defined(WIN32)
-        logError("sendto() error %d", WSAGetLastError());
-        #else
-        logError("sendto() errno = %d", errno);
-        #endif
-
+        logError("sendto() error %d", plt_getLastError());
         return -1;
     }
 
@@ -336,7 +266,7 @@ int idnOpenFrameXYRGB(void *context)
     uint16_t contentID = IDNFLG_CONTENTID_CHANNELMSG;
     
     // Insert channel config header every 200 ms
-    unsigned now = getSystemTimeUS();
+    unsigned now = plt_getSystemTimeUS();
     IDNHDR_SAMPLE_CHUNK *sampleChunkHdr = (IDNHDR_SAMPLE_CHUNK *)&channelMsgHdr[1];
     if((ctx->frameCnt == 0) || ((now - ctx->cfgTimestamp) > 200000))
     {
@@ -473,8 +403,8 @@ int idnPushFrameXYRGB(void *context)
     // Wait between frames to match frame rate
     if(ctx->frameCnt != 0)
     {
-        unsigned usWait = ctx->usFrameTime - (getSystemTimeUS() - ctx->frameTimestamp);
-        if((int)usWait > 0) usleep(usWait);
+        unsigned usWait = ctx->usFrameTime - (plt_getSystemTimeUS() - ctx->frameTimestamp);
+        if((int)usWait > 0) plt_usleep(usWait);
     }
     ctx->frameCnt++;
 
@@ -486,7 +416,7 @@ int idnPushFrameXYRGB(void *context)
     uint16_t contentID = ntohs(channelMsgHdr->contentID);
 
     // IDN channel message header: Set timestamp; Update internal timestamps.
-    unsigned now = getSystemTimeUS();
+    unsigned now = plt_getSystemTimeUS();
     channelMsgHdr->timestamp = htonl(now);
     ctx->frameTimestamp = now;
     if(contentID & IDNFLG_CONTENTID_CONFIG_LSTFRG) ctx->cfgTimestamp = now;
@@ -592,7 +522,7 @@ int idnSendVoid(void *context)
 
     // Populate message header fields
     channelMsgHdr->totalSize = htons((unsigned short)(ctx->payload - (uint8_t *)channelMsgHdr));
-    channelMsgHdr->timestamp = htonl(getSystemTimeUS());
+    channelMsgHdr->timestamp = htonl(plt_getSystemTimeUS());
 
     // Send the packet
     if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
@@ -631,7 +561,7 @@ int idnSendClose(void *context)
 
     // Populate message header fields
     channelMsgHdr->totalSize = htons((unsigned short)(ctx->payload - (uint8_t *)channelMsgHdr));
-    channelMsgHdr->timestamp = htonl(getSystemTimeUS());
+    channelMsgHdr->timestamp = htonl(plt_getSystemTimeUS());
 
     // Send the packet
     if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
@@ -757,42 +687,21 @@ int main(int argc, char **argv)
     ctx.jitterFreeFlag = jitterFreeFlag;
     ctx.scanSpeed = scanSpeed;
     ctx.colorShift = colorShift;
-    ctx.startTime = getSystemTimeUS();
+    ctx.startTime = plt_getSystemTimeUS();
 
     do
     {
         printf("Connecting to IDN-Hello server at %s\n", inet_ntoa(*(struct in_addr *)&helloServerAddr));
         printf("Press Ctrl-C to stop\n");
 
-        #if defined(_WIN32) || defined(WIN32)
-            // Initialize Winsock
-            WSADATA wsaData;
-            int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-            if(iResult != NO_ERROR) 
-            { 
-                logError("WSAStartup failed with error: %d", iResult); 
-                break; 
-            }
-        #else
-            // Initialize time reference and initialize the current time randomly
-            if(clock_gettime(CLOCK_MONOTONIC, &tsRef) < 0)
-            {
-                logError("clock_gettime(CLOCK_MONOTONIC) errno = %d", errno);
-                break;
-            }
-            currTimeUS = (uint32_t)((tsRef.tv_sec * 1000000ul) + (tsRef.tv_nsec / 1000));
-        #endif
+        // Initialize platform specifics
+        if(plt_initialize() != 0) break;
 
         // Open UDP socket
-        ctx.fdSocket = socket(AF_INET, SOCK_DGRAM, 0);
+        ctx.fdSocket = plt_sockOpen(AF_INET, SOCK_DGRAM, 0);
         if(ctx.fdSocket < 0)
         {
-            #if defined(_WIN32) || defined(WIN32)
-            logError("socket() error %d", WSAGetLastError());
-            #else
-            logError("socket() errno = %d", errno);
-            #endif
-
+            logError("socket() error %d", plt_getLastError());
             break;
         }
 
@@ -805,17 +714,18 @@ int main(int argc, char **argv)
         // Run IDTF reader
         if(idtfRead(idtfFilename, xyScale, options, &cbFunc, &ctx)) break;
 
-        // Check for single frame IDTF file.
+        // Check for single frame IDTF file.(wait for the passed hold time)
         if(ctx.frameCnt == 1) 
         {
             // Wait
             for(unsigned i = 0; i < holdTime * 10; i++) 
             {
-                usleep(100000);
+                plt_usleep(100000);
                 idnSendVoid(&ctx);
             }
         }
 
+        // Close the IDN channel
         idnSendClose(&ctx);
     }
     while(0);
@@ -824,14 +734,8 @@ int main(int argc, char **argv)
     if(ctx.bufferPtr) free(ctx.bufferPtr);
 
     // Close socket
-    if(ctx.fdSocket >= 0)
-    {
-        #if defined(_WIN32) || defined(WIN32)
-        closesocket(ctx.fdSocket);
-        #else
-        close(ctx.fdSocket);
-        #endif
-    }
+    if(ctx.fdSocket >= 0) plt_sockClose(ctx.fdSocket);
 
     return 0;
 }
+
