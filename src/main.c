@@ -228,7 +228,7 @@ static int idnSend(void *context, IDNHDR_PACKET *packetHdr, unsigned packetLen)
 
     if(sendto(ctx->fdSocket, (const char *)packetHdr, packetLen, 0, (struct sockaddr *)&ctx->serverSockAddr, sizeof(ctx->serverSockAddr)) < 0)
     {
-        logError("sendto() error %d", plt_getLastError());
+        logError("sendto() failed (error: %d)", plt_sockGetLastError());
         return -1;
     }
 
@@ -671,6 +671,9 @@ int main(int argc, char **argv)
 
     // -------------------------------------------------------------------------
 
+    printf("Connecting to IDN-Hello server at %s\n", inet_ntoa(*(struct in_addr *)&helloServerAddr));
+    printf("Press Ctrl-C to stop\n");
+
     // Initialize driver function context
     IDNCONTEXT ctx = { 0 };
     ctx.serverSockAddr.sin_family      = AF_INET;
@@ -684,17 +687,22 @@ int main(int argc, char **argv)
 
     do
     {
-        printf("Connecting to IDN-Hello server at %s\n", inet_ntoa(*(struct in_addr *)&helloServerAddr));
-        printf("Press Ctrl-C to stop\n");
-
         // Initialize platform specifics
         if(plt_initialize() != 0) break;
+
+        // Initialize platform sockets
+        int rcStartup = plt_sockStartup();
+        if(rcStartup)
+        {
+            logError("Socket startup failed. error = %d", rcStartup);
+            break;
+        }
 
         // Open UDP socket
         ctx.fdSocket = plt_sockOpen(AF_INET, SOCK_DGRAM, 0);
         if(ctx.fdSocket < 0)
         {
-            logError("socket() error %d", plt_getLastError());
+            logError("socket() faile (error: %d)", plt_sockGetLastError());
             break;
         }
 
@@ -728,6 +736,9 @@ int main(int argc, char **argv)
 
     // Close socket
     if(ctx.fdSocket >= 0) plt_sockClose(ctx.fdSocket);
+
+    // Platform sockets cleanup
+    if(plt_sockCleanup()) logError("Socket cleanup failed (error: %d)", plt_sockGetLastError());
 
     return 0;
 }

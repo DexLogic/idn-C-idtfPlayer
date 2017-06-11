@@ -45,19 +45,12 @@
 //  Inline functions
 // -------------------------------------------------------------------------------------------------
 
-inline static int plt_getLastError()
-{
-    return errno;
-}
-
-
 inline static int plt_initialize()
 {
     extern struct timespec tsRef;
     extern uint32_t currTimeUS;
 
     extern void logError(const char *fmt, ...);
-    extern void logInfo(const char *fmt, ...);
 
     // Initialize time reference
     if(clock_gettime(CLOCK_MONOTONIC, &tsRef) < 0)
@@ -108,21 +101,39 @@ inline static int plt_usleep(unsigned usec)
 }
 
 
+inline static FILE *plt_fopen(const char *filename, const char *mode)
+{
+    return fopen(filename, mode);
+}
+
+
+inline static int plt_sockStartup()
+{
+    return 0;
+}
+
+
+inline static int plt_sockCleanup()
+{
+    return 0;
+}
+
+
+inline static int plt_sockGetLastError()
+{
+    return errno;
+}
+
+
 inline static int plt_sockOpen(int domain, int type, int protocol)
 {
     return socket(domain, type, protocol);
 }
 
 
-inline static int plt_sockClose(int sockFD)
+inline static int plt_sockClose(int fdSocket)
 {
-    return close(sockFD);
-}
-
-
-inline static FILE *plt_fopen(const char *filename, const char *mode)
-{
-    return fopen(filename, mode);
+    return close(fdSocket);
 }
 
 

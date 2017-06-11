@@ -633,7 +633,7 @@ int idtfRead(char *filename, float xyScale, unsigned options, IDTF_CALLBACK_FUNC
     FILE *fpIDTF = plt_fopen(filename, "rb");
     if(!fpIDTF) 
     {
-        logError("[IDTF] %s: Cannot open file (err = %d)", filename, plt_getLastError());
+        logError("[IDTF] %s: Cannot open file (errno: %d)", filename, errno);
         return -1;
     }
 

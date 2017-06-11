@@ -50,26 +50,8 @@ typedef unsigned long in_addr_t;
 //  Inline functions
 // -------------------------------------------------------------------------------------------------
 
-inline static int plt_getLastError()
-{
-    return WSAGetLastError();
-}
-
-
 inline static int plt_initialize()
 {
-	extern void logError(const char *fmt, ...);
-	extern void logInfo(const char *fmt, ...);
-
-	// Initialize Winsock
-    WSADATA wsaData;
-    int rcStartup = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if(rcStartup != NO_ERROR)
-    { 
-        logError("WSAStartup failed with error: %d", rcStartup);
-		return -1;
-    }
-
     return 0;
 }
 
@@ -105,18 +87,6 @@ inline static int plt_usleep(unsigned usec)
 }
 
 
-inline static int plt_sockOpen(int domain, int type, int protocol)
-{
-    return socket(domain, type, protocol);
-}
-
-
-inline static int plt_sockClose(int sockFD)
-{
-    return closesocket(sockFD);
-}
-
-
 inline static FILE *plt_fopen(const char *filename, const char *mode)
 {
     FILE *fp;
@@ -124,6 +94,37 @@ inline static FILE *plt_fopen(const char *filename, const char *mode)
     if(err != 0) return (FILE *)0;
 
     return fp;
+}
+
+inline static int plt_sockStartup()
+{
+    // Initialize Winsock
+    WSADATA wsaData;
+    return WSAStartup(MAKEWORD(2, 2), &wsaData);
+}
+
+
+inline static int plt_sockCleanup()
+{
+    return WSACleanup();
+}
+
+
+inline static int plt_sockGetLastError()
+{
+    return WSAGetLastError();
+}
+
+
+inline static int plt_sockOpen(int domain, int type, int protocol)
+{
+    return socket(domain, type, protocol);
+}
+
+
+inline static int plt_sockClose(int fdSocket)
+{
+    return closesocket(fdSocket);
 }
 
 
