@@ -222,7 +222,7 @@ static int idnSend(void *context, IDNHDR_PACKET *packetHdr, unsigned packetLen)
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
 
 /*
-    printf("\n%u\n", (plt_getSystemTimeUS() - ctx->startTime) / 1000);
+    printf("\n%u\n", (plt_getMonoTimeUS() - ctx->startTime) / 1000);
     binDump(packetHdr, packetLen);
 */
 
@@ -259,7 +259,7 @@ int idnOpenFrameXYRGB(void *context)
     uint16_t contentID = IDNFLG_CONTENTID_CHANNELMSG;
     
     // Insert channel config header every 200 ms
-    unsigned now = plt_getSystemTimeUS();
+    unsigned now = plt_getMonoTimeUS();
     IDNHDR_SAMPLE_CHUNK *sampleChunkHdr = (IDNHDR_SAMPLE_CHUNK *)&channelMsgHdr[1];
     if((ctx->frameCnt == 0) || ((now - ctx->cfgTimestamp) > 200000))
     {
@@ -305,8 +305,9 @@ int idnPutSampleXYRGB(void *context, int16_t x, int16_t y, uint8_t r, uint8_t g,
     // Sanity check
     if(ctx->payload == (uint8_t *)0) return -1;
 
-    // Make sure there is enough buffer
-    unsigned lenUsed = ctx->payload - ctx->bufferPtr;
+    // Make sure there is enough buffer. Note: payload and bufferPtr are (uint8_t *) - and 
+    // pointer substraction is defined as the difference of (array) elements.
+    unsigned lenUsed = (unsigned)(ctx->payload - ctx->bufferPtr);
     unsigned lenNeeded = lenUsed + ((1 + ctx->colorShift) * XYRGB_SAMPLE_SIZE);
     if(ensureBufferCapacity(ctx, lenNeeded)) return -1;
 
@@ -396,7 +397,7 @@ int idnPushFrameXYRGB(void *context)
     // Wait between frames to match frame rate
     if(ctx->frameCnt != 0)
     {
-        unsigned usWait = ctx->usFrameTime - (plt_getSystemTimeUS() - ctx->frameTimestamp);
+        unsigned usWait = ctx->usFrameTime - (plt_getMonoTimeUS() - ctx->frameTimestamp);
         if((int)usWait > 0) plt_usleep(usWait);
     }
     ctx->frameCnt++;
@@ -409,7 +410,7 @@ int idnPushFrameXYRGB(void *context)
     uint16_t contentID = ntohs(channelMsgHdr->contentID);
 
     // IDN channel message header: Set timestamp; Update internal timestamps.
-    unsigned now = plt_getSystemTimeUS();
+    unsigned now = plt_getMonoTimeUS();
     channelMsgHdr->timestamp = htonl(now);
     ctx->frameTimestamp = now;
     if(contentID & IDNFLG_CONTENTID_CONFIG_LSTFRG) ctx->cfgTimestamp = now;
@@ -515,7 +516,7 @@ int idnSendVoid(void *context)
 
     // Populate message header fields
     channelMsgHdr->totalSize = htons((unsigned short)(ctx->payload - (uint8_t *)channelMsgHdr));
-    channelMsgHdr->timestamp = htonl(plt_getSystemTimeUS());
+    channelMsgHdr->timestamp = htonl(plt_getMonoTimeUS());
 
     // Send the packet
     if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
@@ -554,7 +555,7 @@ int idnSendClose(void *context)
 
     // Populate message header fields
     channelMsgHdr->totalSize = htons((unsigned short)(ctx->payload - (uint8_t *)channelMsgHdr));
-    channelMsgHdr->timestamp = htonl(plt_getSystemTimeUS());
+    channelMsgHdr->timestamp = htonl(plt_getMonoTimeUS());
 
     // Send the packet
     if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
@@ -676,19 +677,23 @@ int main(int argc, char **argv)
 
     // Initialize driver function context
     IDNCONTEXT ctx = { 0 };
-    ctx.serverSockAddr.sin_family      = AF_INET;
-    ctx.serverSockAddr.sin_port        = htons(IDNVAL_HELLO_UDP_PORT);
+    ctx.fdSocket = -1;
+    ctx.serverSockAddr.sin_family = AF_INET;
+    ctx.serverSockAddr.sin_port = htons(IDNVAL_HELLO_UDP_PORT);
     ctx.serverSockAddr.sin_addr.s_addr = helloServerAddr;
     ctx.usFrameTime = 1000000 / frameRate;
     ctx.jitterFreeFlag = jitterFreeFlag;
     ctx.scanSpeed = scanSpeed;
     ctx.colorShift = colorShift;
-    ctx.startTime = plt_getSystemTimeUS();
-
+    
     do
     {
-        // Initialize platform specifics
-        if(plt_initialize() != 0) break;
+        // Validate monotonic time reference
+        if(plt_validateMonoTime() != 0)
+        {
+            logError("Monotonic time init failed");
+            return -1;
+        }
 
         // Initialize platform sockets
         int rcStartup = plt_sockStartup();
@@ -713,6 +718,7 @@ int main(int argc, char **argv)
         cbFunc.pushFrame = idnPushFrameXYRGB;
         
         // Run IDTF reader
+        ctx.startTime = plt_getMonoTimeUS();
         if(idtfRead(idtfFilename, xyScale, options, &cbFunc, &ctx)) break;
 
         // Check for single frame IDTF file.(wait for the passed hold time)

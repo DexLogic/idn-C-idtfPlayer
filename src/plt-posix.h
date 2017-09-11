@@ -45,53 +45,52 @@
 //  Inline functions
 // -------------------------------------------------------------------------------------------------
 
-inline static int plt_initialize()
+inline static int plt_validateMonoTime()
 {
-    extern struct timespec tsRef;
-    extern uint32_t currTimeUS;
+    extern int plt_monoValid;
+    extern struct timespec plt_monoRef;
+    extern uint32_t plt_monoTimeUS;
 
-    extern void logError(const char *fmt, ...);
-
-    // Initialize time reference
-    if(clock_gettime(CLOCK_MONOTONIC, &tsRef) < 0)
+    if(!plt_monoValid)
     {
-        logError("clock_gettime(CLOCK_MONOTONIC) errno = %d", errno);
-        return -1;
-    }
+        // Initialize time reference
+        if(clock_gettime(CLOCK_MONOTONIC, &plt_monoRef) < 0) return -1;
 
-    // Set the current time stamp randomly
-    currTimeUS = (uint32_t)((tsRef.tv_sec * 1000000ul) + (tsRef.tv_nsec / 1000));
+        // Initialize internal time randomly
+        plt_monoTimeUS = (uint32_t)((plt_monoRef.tv_sec * 1000000ul) + (plt_monoRef.tv_nsec / 1000));
+        plt_monoValid = 1;
+    }
 
     return 0;
 }
 
 
-inline static uint32_t plt_getSystemTimeUS()
+inline static uint32_t plt_getMonoTimeUS()
 {
-    extern struct timespec tsRef;
-    extern uint32_t currTimeUS;
+    extern struct timespec plt_monoRef;
+    extern uint32_t plt_monoTimeUS;
 
     // Get current time
     struct timespec tsNow, tsDiff;
     clock_gettime(CLOCK_MONOTONIC, &tsNow);
 
     // Determine difference to reference time
-	if(tsNow.tv_nsec < tsRef.tv_nsec) 
+    if(tsNow.tv_nsec < plt_monoRef.tv_nsec) 
     {
-		tsDiff.tv_sec = (tsNow.tv_sec - tsRef.tv_sec) - 1;
-		tsDiff.tv_nsec = (1000000000 + tsNow.tv_nsec) - tsRef.tv_nsec;
-	} 
+        tsDiff.tv_sec = (tsNow.tv_sec - plt_monoRef.tv_sec) - 1;
+        tsDiff.tv_nsec = (1000000000 + tsNow.tv_nsec) - plt_monoRef.tv_nsec;
+    } 
     else 
     {
-		tsDiff.tv_sec = tsNow.tv_sec - tsRef.tv_sec;
-		tsDiff.tv_nsec = tsNow.tv_nsec - tsRef.tv_nsec;
-	}
+        tsDiff.tv_sec = tsNow.tv_sec - plt_monoRef.tv_sec;
+        tsDiff.tv_nsec = tsNow.tv_nsec - plt_monoRef.tv_nsec;
+    }
 
-    // Update internal counters
-    currTimeUS += (uint32_t)((tsDiff.tv_sec * 1000000) + (tsDiff.tv_nsec / 1000));
-    tsRef = tsNow;
+    // Update internal time and system time reference
+    plt_monoTimeUS += (uint32_t)((tsDiff.tv_sec * 1000000) + (tsDiff.tv_nsec / 1000));
+    plt_monoRef = tsNow;
 
-    return currTimeUS;
+    return plt_monoTimeUS;
 }
 
 

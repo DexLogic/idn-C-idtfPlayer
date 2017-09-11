@@ -109,10 +109,10 @@ typedef struct _IDNHDR_SERVICEMAP_RESPONSE
 
 typedef struct _IDNHDR_SERVICEMAP_ENTRY
 {
-    uint8_t serviceID;                          // The ID of the service, 0 = Default/Relay
-    uint8_t serviceType;                        // The type of the service, 0 = Relay
+    uint8_t serviceID;                          // Service: The ID (!=0); Relay: Must be 0
+    uint8_t serviceType;                        // The type of the service; Relay: Must be 0
     uint8_t flags;                              // Status flags and options
-    uint8_t relayNumber;                        // The relay the service belongs to, 0 = none/root
+    uint8_t relayNumber;                        // Service: Root(0)/Relay(>0); Relay: Number (!=0)
     uint8_t name[20];                           // Not terminated, shorter names padded with '\0'
 
 } IDNHDR_SERVICEMAP_ENTRY;

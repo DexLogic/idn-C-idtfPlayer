@@ -29,8 +29,9 @@
 //  01/2015 Dirk Apitz, IDN-stream standard draft
 //  06/2015 Dirk Apitz, Frame chunk fragments
 //  05/2016 Dirk Apitz, Generic data types
+//  09/2017 Dirk Apitz, Service types
 //
-//  Version: 2017-02-17
+//  Version: 2017-09-03
 // -------------------------------------------------------------------------------------------------
 
 
@@ -45,6 +46,14 @@
 // -------------------------------------------------------------------------------------------------
 //  Defines
 // -------------------------------------------------------------------------------------------------
+
+// Service types(0x00..0x3F): Interfaces
+#define IDNVAL_STYPE_RELAY                  0x00        // Relay
+#define IDNVAL_STYPE_UART                   0x04        // Generic UART
+#define IDNVAL_STYPE_DMX512                 0x05        // DMX512
+
+// Service types(0x80..0xBF / 2 LSB): Media types
+#define IDNVAL_STYPE_LAPRO                  0x80        // Standard laser projector
 
 // Channel message content IDs
 #define IDNFLG_CONTENTID_CHANNELMSG         0x8000      // Channel message flag (specific bit assignments)
