@@ -71,6 +71,7 @@
     <ClInclude Include="src/idtf.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src/plt-windows.c" />
     <ClCompile Include="src/idtf.c" />
     <ClCompile Include="src/main.c" />
   </ItemGroup>
