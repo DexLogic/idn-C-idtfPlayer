@@ -1,4 +1,9 @@
 
+1.2.0 (2017-09-29)
+- IDN header update
+- Gracefully close session
+- Client group
+
 1.1.1 (2017-09-11)
 - IDN header update
 - Fixed monotonic time in windows port

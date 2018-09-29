@@ -81,6 +81,7 @@ typedef struct
 {
     int fdSocket;                           // Socket file descriptor
     struct sockaddr_in serverSockAddr;      // Target server address
+    unsigned char clientGroup;              // Client group to send on
     unsigned usFrameTime;                   // Time for one frame in microseconds (1000000/frameRate)
     int jitterFreeFlag;                     // Scan frames only once to exactly match frame rate
     unsigned scanSpeed;                     // Scan speed in samples per second
@@ -249,8 +250,8 @@ int idnOpenFrameXYRGB(void *context)
 
     // IDN-Hello packet header. Note: Sequence number populated on push
     IDNHDR_PACKET *packetHdr = (IDNHDR_PACKET *)ctx->bufferPtr;
-    packetHdr->command = IDNCMD_MESSAGE;
-    packetHdr->flags = 0;
+    packetHdr->command = IDNCMD_RT_CNLMSG;
+    packetHdr->flags = ctx->clientGroup;
 
     // ---------------------------------------------------------------------------------------------
 
@@ -443,8 +444,8 @@ int idnPushFrameXYRGB(void *context)
 
             // Allocate and populate packet header
             packetHdr = (IDNHDR_PACKET *)((uint8_t *)channelMsgHdr - sizeof(IDNHDR_PACKET));
-            packetHdr->command = IDNCMD_MESSAGE;
-            packetHdr->flags = 0;
+            packetHdr->command = IDNCMD_RT_CNLMSG;
+            packetHdr->flags = ctx->clientGroup;
             packetHdr->sequence = htons(ctx->sequence++);
 
             // Calculate remaining message length
@@ -502,8 +503,8 @@ int idnSendVoid(void *context)
 
     // IDN-Hello packet header
     IDNHDR_PACKET *packetHdr = (IDNHDR_PACKET *)ctx->bufferPtr;
-    packetHdr->command = IDNCMD_MESSAGE;
-    packetHdr->flags = 0;
+    packetHdr->command = IDNCMD_RT_CNLMSG;
+    packetHdr->flags = ctx->clientGroup;
     packetHdr->sequence = htons(ctx->sequence++);
 
     // IDN-Stream channel message header
@@ -532,10 +533,10 @@ int idnSendClose(void *context)
     // Make sure there is enough buffer
     if(ensureBufferCapacity(ctx, 0x1000)) return -1;
 
-    // IDN-Hello packet header
+    // Close the channel: IDN-Hello packet header
     IDNHDR_PACKET *packetHdr = (IDNHDR_PACKET *)ctx->bufferPtr;
-    packetHdr->command = IDNCMD_MESSAGE;
-    packetHdr->flags = 0;
+    packetHdr->command = IDNCMD_RT_CNLMSG;
+    packetHdr->flags = ctx->clientGroup;
     packetHdr->sequence = htons(ctx->sequence++);
 
     // IDN-Stream channel message header
@@ -560,6 +561,16 @@ int idnSendClose(void *context)
     // Send the packet
     if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
 
+    // ---------------------------------------------------------------------------------------------
+
+    // Close the connection/session: IDN-Hello packet header
+    packetHdr->command = IDNCMD_RT_CNLMSG_CLOSE;
+    packetHdr->flags = ctx->clientGroup;
+    packetHdr->sequence = htons(ctx->sequence++);
+
+    // Send the packet (gracefully close session)
+    if(idnSend(context, packetHdr, sizeof(IDNHDR_PACKET))) return -1;
+
     return 0;
 }
 
@@ -572,6 +583,7 @@ int main(int argc, char **argv)
 {
     int usageFlag = 0;
     in_addr_t helloServerAddr = 0;
+    unsigned char clientGroup = 0;
     char *idtfFilename = 0;
     unsigned holdTime = 5;
     unsigned frameRate = DEFAULT_FRAMERATE;
@@ -588,6 +600,13 @@ int main(int argc, char **argv)
         {
             if(++i >= argc) { usageFlag = 1; break; }
             helloServerAddr = inet_addr(argv[i]);
+        }
+        else if(!strcmp(argv[i], "-cg"))
+        {
+            if(++i >= argc) { usageFlag = 1; break; }
+            int param = atoi(argv[i]);
+            if((param < 0) || (param >= 16)) { usageFlag = 1; break; }
+            else clientGroup = atoi(argv[i]);
         }
         else if(!strcmp(argv[i], "-idtf"))
         {
@@ -652,18 +671,19 @@ int main(int argc, char **argv)
         printf("\n");
         printf("USAGE: idtfPlayer { Options } \n\n");
         printf("Options:\n");
-        printf("  -hs      ipAddress  IP address of the IDN-Hello server.\n");
-        printf("  -idtf    filename   Name of the IDTF (ILDA Image Data Transfer Format) file.\n");
-        printf("  -hold    time       Time in seconds to display single-frame files\n");
-        printf("  -fr      frameRate  Number of frames per second. (default: 30)\n");
-        printf("  -jf                 Jitter-Free (scan frames only once to match frame rate)\n");
-        printf("  -pps     scanSpeed  Number of points/samples per second. (default: 30000)\n");
-        printf("  -sft     colorShift Number of points, the color is shifted (default: 0)\n");
-        printf("  -scale   factor     Factor by which to scale the IDTF file (default: 1.0)\n");
-        printf("  -mx                 Mirror x axis\n");
-        printf("  -my                 Mirror y axis\n");
-        printf("  -def-pal            Use the default palette as of IDTF rev. 11 (default).\n");
-        printf("  -std-pal            Use the abandoned ILDA Standard Palette.\n");
+        printf("  -hs      ipAddress   IP address of the IDN-Hello server.\n");
+        printf("  -cg      clientGroup The client group (0..15, default = 0).\n");
+        printf("  -idtf    filename    Name of the IDTF (ILDA Image Data Transfer Format) file.\n");
+        printf("  -hold    time        Time in seconds to display single-frame files\n");
+        printf("  -fr      frameRate   Number of frames per second. (default: 30)\n");
+        printf("  -jf                  Jitter-Free (scan frames only once to match frame rate)\n");
+        printf("  -pps     scanSpeed   Number of points/samples per second. (default: 30000)\n");
+        printf("  -sft     colorShift  Number of points, the color is shifted (default: 0)\n");
+        printf("  -scale   factor      Factor by which to scale the IDTF file (default: 1.0)\n");
+        printf("  -mx                  Mirror x axis\n");
+        printf("  -my                  Mirror y axis\n");
+        printf("  -def-pal             Use the default palette as of IDTF rev. 11 (default).\n");
+        printf("  -std-pal             Use the abandoned ILDA Standard Palette.\n");
         printf("\n");
 
         return 0;
@@ -681,6 +701,7 @@ int main(int argc, char **argv)
     ctx.serverSockAddr.sin_family = AF_INET;
     ctx.serverSockAddr.sin_port = htons(IDNVAL_HELLO_UDP_PORT);
     ctx.serverSockAddr.sin_addr.s_addr = helloServerAddr;
+    ctx.clientGroup = clientGroup;
     ctx.usFrameTime = 1000000 / frameRate;
     ctx.jitterFreeFlag = jitterFreeFlag;
     ctx.scanSpeed = scanSpeed;
