@@ -96,13 +96,13 @@ typedef struct
     uint32_t cfgTimestamp;                  // Timestamp of the last channel configuration
 
     // Buffer related
-    uint8_t *payload;                       // Pointer to the end of the buffer
+    uint32_t payloadLen;                    // Currently used length of the buffer
 
     // IDN-Hello related
     uint16_t sequence;                      // IDN-Hello sequence number (UDP packet tracking)
 
     // IDN-Stream related
-    IDNHDR_SAMPLE_CHUNK *sampleChunkHdr;    // Current sample chunk header
+    uint32_t sampleChunkHdrOffset;          // Offset of current sample chunk header 
     uint32_t sampleCnt;                     // Current number of samples
 
 } IDNCONTEXT;
@@ -151,7 +151,7 @@ static int ensureBufferCapacity(IDNCONTEXT *ctx, unsigned minLen)
     if(ctx->bufferPtr == (uint8_t *)0) 
     { 
         logError("[IDN] Insufficient buffer memory"); 
-        ctx->payload = (uint8_t *)0; 
+        ctx->payloadLen = 0;
         return -1; 
     }
 
@@ -245,6 +245,9 @@ int idnOpenFrameXYRGB(void *context)
 {
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
 
+    // Sanity check (buffer already in use?)
+    if(ctx->payloadLen != 0) return -1;
+
     // Make sure there is enough buffer
     if(ensureBufferCapacity(ctx, 0x4000)) return -1;
 
@@ -290,9 +293,9 @@ int idnOpenFrameXYRGB(void *context)
 
     // ---------------------------------------------------------------------------------------------
 
-    // Chunk data pointer setup
-    ctx->sampleChunkHdr = sampleChunkHdr;
-    ctx->payload = (uint8_t *)&sampleChunkHdr[1];
+    // Setup for sample chunk data positions
+    ctx->sampleChunkHdrOffset = (uint8_t *)sampleChunkHdr - ctx->bufferPtr;
+    ctx->payloadLen = (uint8_t *)&sampleChunkHdr[1] - ctx->bufferPtr;
     ctx->sampleCnt = 0;
 
     return 0;
@@ -303,13 +306,11 @@ int idnPutSampleXYRGB(void *context, int16_t x, int16_t y, uint8_t r, uint8_t g,
 {
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
 
-    // Sanity check
-    if(ctx->payload == (uint8_t *)0) return -1;
+    // Sanity check (sample chunk bracket open?)
+    if(ctx->payloadLen == 0) return -1;
 
-    // Make sure there is enough buffer. Note: payload and bufferPtr are (uint8_t *) - and 
-    // pointer substraction is defined as the difference of (array) elements.
-    unsigned lenUsed = (unsigned)(ctx->payload - ctx->bufferPtr);
-    unsigned lenNeeded = lenUsed + ((1 + ctx->colorShift) * XYRGB_SAMPLE_SIZE);
+    // Make sure there is enough buffer.
+    unsigned lenNeeded = ctx->payloadLen + ((1 + ctx->colorShift) * XYRGB_SAMPLE_SIZE);
     if(ensureBufferCapacity(ctx, lenNeeded)) return -1;
 
 
@@ -323,7 +324,7 @@ int idnPutSampleXYRGB(void *context, int16_t x, int16_t y, uint8_t r, uint8_t g,
 
 
     // Get pointer to next sample
-    uint8_t *p = ctx->payload;
+    uint8_t *p = &ctx->bufferPtr[ctx->payloadLen];
 
     // Store galvo sample bytes
     *p++ = (uint8_t)(x >> 8);
@@ -354,8 +355,8 @@ int idnPutSampleXYRGB(void *context, int16_t x, int16_t y, uint8_t r, uint8_t g,
     *p++ = g;
     *p++ = b;
 
-    // Update pointer to next sample, update sample count
-    ctx->payload += XYRGB_SAMPLE_SIZE;
+    // Update payload length to include the sample, update sample count
+    ctx->payloadLen += XYRGB_SAMPLE_SIZE;
     ctx->sampleCnt++;
 
     return 0;
@@ -366,8 +367,8 @@ int idnPushFrameXYRGB(void *context)
 {
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
 
-    // Sanity check
-    if(ctx->payload == (uint8_t *)0) return -1;
+    // Sanity check (sample chunk bracket open?)
+    if(ctx->payloadLen == 0) return -1;
     if(ctx->sampleCnt < 2) { logError("[IDN] Invalid sample count %u", ctx->sampleCnt); return -1; }
 
     // ---------------------------------------------------------------------------------------------
@@ -376,24 +377,25 @@ int idnPushFrameXYRGB(void *context)
     for(unsigned i = 0; i < ctx->colorShift; i++) 
     {
         // Get pointer to last position and next sample (already has color due to shift)
-        uint16_t *src = (uint16_t *)(ctx->payload - XYRGB_SAMPLE_SIZE);
-        uint16_t *dst = (uint16_t *)ctx->payload;
+        uint16_t *src = (uint16_t *)&ctx->bufferPtr[ctx->payloadLen - XYRGB_SAMPLE_SIZE];
+        uint16_t *dst = (uint16_t *)&ctx->bufferPtr[ctx->payloadLen];
 
-        // Duplicate position
+        // Duplicate position samples (X/Y)
         *dst++ = *src++;
         *dst++ = *src++;
 
         // Update pointer to next sample, update sample count
-        ctx->payload += XYRGB_SAMPLE_SIZE;
+        ctx->payloadLen += XYRGB_SAMPLE_SIZE;
         ctx->sampleCnt++;
     }
 
     // Sample chunk header: Calculate frame duration based on scan speed.
-    // In case jitter-free option is set: Scan frames 2.. ony once.
+    // In case jitter-free option is set: Scan frames (starting from second) ony once.
+    IDNHDR_SAMPLE_CHUNK *sampleChunkHdr = (IDNHDR_SAMPLE_CHUNK *)&ctx->bufferPtr[ctx->sampleChunkHdrOffset];
     uint32_t frameDuration = (((uint64_t)(ctx->sampleCnt - 1)) * 1000000ull) / (uint64_t)ctx->scanSpeed;
     uint8_t frameFlags = 0;
     if(ctx->jitterFreeFlag && ctx->frameCnt != 0) frameFlags |= IDNFLG_GRAPHIC_FRAME_ONCE;
-    ctx->sampleChunkHdr->flagsDuration = htonl((frameFlags << 24) | frameDuration);
+    sampleChunkHdr->flagsDuration = htonl((frameFlags << 24) | frameDuration);
 
     // Wait between frames to match frame rate
     if(ctx->frameCnt != 0)
@@ -417,7 +419,9 @@ int idnPushFrameXYRGB(void *context)
     if(contentID & IDNFLG_CONTENTID_CONFIG_LSTFRG) ctx->cfgTimestamp = now;
 
     // Message header: Calculate message length. Must not exceed 0xFF00 octets !!
-    unsigned msgLength = ctx->payload - (uint8_t *)channelMsgHdr;
+    // Note: Pointer type uint8_t and substraction is defined as the difference of (array) elements.
+    uint8_t *payloadLimit = &ctx->bufferPtr[ctx->payloadLen];
+    unsigned msgLength = payloadLimit - (uint8_t *)channelMsgHdr;
     if(msgLength > MAX_IDN_MESSAGE_LEN)
     {
         // Fragmented frame (split across multiple messages), set message length and chunk type
@@ -449,7 +453,7 @@ int idnPushFrameXYRGB(void *context)
             packetHdr->sequence = htons(ctx->sequence++);
 
             // Calculate remaining message length
-            msgLength = ctx->payload - (uint8_t *)channelMsgHdr;
+            msgLength = payloadLimit - (uint8_t *)channelMsgHdr;
             if(msgLength > MAX_IDN_MESSAGE_LEN)
             {
                 // Middle sequel fragment
@@ -467,7 +471,7 @@ int idnPushFrameXYRGB(void *context)
                 channelMsgHdr->contentID = htons(contentID | IDNFLG_CONTENTID_CONFIG_LSTFRG);
 
                 // Send the packet
-                if(idnSend(ctx, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
+                if(idnSend(ctx, packetHdr, payloadLimit - (uint8_t *)packetHdr)) return -1;
 
                 // Done sending the packet
                 break;
@@ -484,11 +488,11 @@ int idnPushFrameXYRGB(void *context)
         packetHdr->sequence = htons(ctx->sequence++);
 
         // Send the packet
-        if(idnSend(ctx, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
+        if(idnSend(ctx, packetHdr, payloadLimit - (uint8_t *)packetHdr)) return -1;
     }
 
     // Invalidate payload - cause error in case of invalid call order
-    ctx->payload = (uint8_t *)0;
+    ctx->payloadLen = 0;
 
     return 0;
 }
@@ -497,6 +501,9 @@ int idnPushFrameXYRGB(void *context)
 int idnSendVoid(void *context)
 {
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
+
+    // Sanity check (buffer already in use?)
+    if(ctx->payloadLen != 0) return -1;
 
     // Make sure there is enough buffer
     if(ensureBufferCapacity(ctx, 0x1000)) return -1;
@@ -513,14 +520,14 @@ int idnSendVoid(void *context)
     channelMsgHdr->contentID = htons(contentID);
 
     // Pointer to the end of the buffer for message length and packet length calculation
-    ctx->payload = (uint8_t *)&channelMsgHdr[1];
+    uint8_t *payloadLimit = (uint8_t *)&channelMsgHdr[1];
 
     // Populate message header fields
-    channelMsgHdr->totalSize = htons((unsigned short)(ctx->payload - (uint8_t *)channelMsgHdr));
+    channelMsgHdr->totalSize = htons((unsigned short)(payloadLimit - (uint8_t *)channelMsgHdr));
     channelMsgHdr->timestamp = htonl(plt_getMonoTimeUS());
 
     // Send the packet
-    if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
+    if(idnSend(context, packetHdr, payloadLimit - (uint8_t *)packetHdr)) return -1;
 
     return 0;
 }
@@ -529,6 +536,9 @@ int idnSendVoid(void *context)
 int idnSendClose(void *context)
 {
     IDNCONTEXT *ctx = (IDNCONTEXT *)context;
+
+    // Sanity check (buffer already in use?)
+    if(ctx->payloadLen != 0) return -1;
 
     // Make sure there is enough buffer
     if(ensureBufferCapacity(ctx, 0x1000)) return -1;
@@ -552,14 +562,14 @@ int idnSendClose(void *context)
     channelConfigHdr->serviceMode = 0;
 
     // Pointer to the end of the buffer for message length and packet length calculation
-    ctx->payload = (uint8_t *)&channelConfigHdr[1];
+    uint8_t *payloadLimit = (uint8_t *)&channelConfigHdr[1];
 
     // Populate message header fields
-    channelMsgHdr->totalSize = htons((unsigned short)(ctx->payload - (uint8_t *)channelMsgHdr));
+    channelMsgHdr->totalSize = htons((unsigned short)(payloadLimit - (uint8_t *)channelMsgHdr));
     channelMsgHdr->timestamp = htonl(plt_getMonoTimeUS());
 
     // Send the packet
-    if(idnSend(context, packetHdr, ctx->payload - (uint8_t *)packetHdr)) return -1;
+    if(idnSend(context, packetHdr, payloadLimit - (uint8_t *)packetHdr)) return -1;
 
     // ---------------------------------------------------------------------------------------------
 
