@@ -1,4 +1,7 @@
 
+1.2.2 (2021-10-28)
+- Support for sending to a specific serviceID
+
 1.2.1 (2019-10-26)
 - Bugfix for pointers and buffer reallocation
 
