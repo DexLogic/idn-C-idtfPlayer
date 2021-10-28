@@ -82,6 +82,7 @@ typedef struct
     int fdSocket;                           // Socket file descriptor
     struct sockaddr_in serverSockAddr;      // Target server address
     unsigned char clientGroup;              // Client group to send on
+    unsigned char serviceID;                // ServiceID to use
     unsigned usFrameTime;                   // Time for one frame in microseconds (1000000/frameRate)
     int jitterFreeFlag;                     // Scan frames only once to exactly match frame rate
     unsigned scanSpeed;                     // Scan speed in samples per second
@@ -271,7 +272,7 @@ int idnOpenFrameXYRGB(void *context)
         IDNHDR_CHANNEL_CONFIG *channelConfigHdr = (IDNHDR_CHANNEL_CONFIG *)sampleChunkHdr;
         channelConfigHdr->wordCount = 4;
         channelConfigHdr->flags = IDNFLG_CHNCFG_ROUTING;
-        channelConfigHdr->serviceID = 0;
+        channelConfigHdr->serviceID = ctx->serviceID;
         channelConfigHdr->serviceMode = IDNVAL_SMOD_LPGRF_DISCRETE;
 
         // Standard IDTF-to-IDN descriptors
@@ -594,6 +595,7 @@ int main(int argc, char **argv)
     int usageFlag = 0;
     in_addr_t helloServerAddr = 0;
     unsigned char clientGroup = 0;
+    unsigned char serviceID = 0;
     char *idtfFilename = 0;
     unsigned holdTime = 5;
     unsigned frameRate = DEFAULT_FRAMERATE;
@@ -617,6 +619,13 @@ int main(int argc, char **argv)
             int param = atoi(argv[i]);
             if((param < 0) || (param >= 16)) { usageFlag = 1; break; }
             else clientGroup = atoi(argv[i]);
+        }
+        else if(!strcmp(argv[i], "-sid"))
+        {
+            if(++i >= argc) { usageFlag = 1; break; }
+            int param = atoi(argv[i]);
+            if((param < 0) || (param >= 256)) { usageFlag = 1; break; }
+            else serviceID = param;
         }
         else if(!strcmp(argv[i], "-idtf"))
         {
@@ -712,6 +721,7 @@ int main(int argc, char **argv)
     ctx.serverSockAddr.sin_port = htons(IDNVAL_HELLO_UDP_PORT);
     ctx.serverSockAddr.sin_addr.s_addr = helloServerAddr;
     ctx.clientGroup = clientGroup;
+    ctx.serviceID = serviceID;
     ctx.usFrameTime = 1000000 / frameRate;
     ctx.jitterFreeFlag = jitterFreeFlag;
     ctx.scanSpeed = scanSpeed;
