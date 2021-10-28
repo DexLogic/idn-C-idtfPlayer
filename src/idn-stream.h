@@ -1,7 +1,7 @@
 // -------------------------------------------------------------------------------------------------
 //  File idn-stream.h
 //
-//  Copyright (c) 2013-2017 DexLogic, Dirk Apitz
+//  Copyright (c) 2013-2020 DexLogic, Dirk Apitz
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
 //  of this software and associated documentation files (the "Software"), to deal
@@ -30,8 +30,9 @@
 //  06/2015 Dirk Apitz, Frame chunk fragments
 //  05/2016 Dirk Apitz, Generic data types
 //  09/2017 Dirk Apitz, Service types
+//  10/2020 Dirk Apitz, Audio support
 //
-//  Version: 2017-09-03
+//  Version: 2021-10-28
 // -------------------------------------------------------------------------------------------------
 
 
@@ -48,12 +49,14 @@
 // -------------------------------------------------------------------------------------------------
 
 // Service types(0x00..0x3F): Interfaces
-#define IDNVAL_STYPE_RELAY                  0x00        // Relay
-#define IDNVAL_STYPE_UART                   0x04        // Generic UART
-#define IDNVAL_STYPE_DMX512                 0x05        // DMX512
+#define IDNVAL_STYPE_VOID                   0x00        // Unknown
+#define IDNVAL_STYPE_UART                   0x04        // Generic UART interface
+#define IDNVAL_STYPE_DMX512                 0x05        // Generic DMX512 interface
+#define IDNVAL_STYPE_MIDI                   0x08        // Generic MIDI interface
 
 // Service types(0x80..0xBF / 2 LSB): Media types
 #define IDNVAL_STYPE_LAPRO                  0x80        // Standard laser projector
+#define IDNVAL_STYPE_AUDIO                  0x84        // Standard audio processing
 
 // Channel message content IDs
 #define IDNFLG_CONTENTID_CHANNELMSG         0x8000      // Channel message flag (specific bit assignments)
@@ -69,6 +72,7 @@
 #define IDNVAL_CNKTYPE_OCTET_SEGMENT        0x10        // Delimited sequence of octets (can be multiple chunks)
 #define IDNVAL_CNKTYPE_OCTET_STRING         0x11        // Discrete sequence of octets (single chunk)
 #define IDNVAL_CNKTYPE_DIMMER_LEVELS        0x18        // Dimmer levels for DMX512 packets
+#define IDNVAL_CNKTYPE_AUDIO_WAVE           0x20        // Sample data array
 
 // Data chunk types - fragment sequel
 #define IDNVAL_CNKTYPE_LPGRF_FRAME_SEQUEL   0xC0        // Sample data array (sequel fragment)
@@ -86,6 +90,7 @@
 #define IDNVAL_SMOD_LPEFX_DISCRETE          0x04        // Buffered, frames of effect data, may mix with strings
 #define IDNVAL_SMOD_DMX512_CONTINUOUS       0x05        // Transparent, octet segments only (includes start code)
 #define IDNVAL_SMOD_DMX512_DISCRETE         0x06        // Buffered, frames of effect data, may mix with strings
+#define IDNVAL_SMOD_AUDIO_CONTINUOUS        0x0C        // Audio: Stream of waveform segments
 
 // Chunk header flags
 #define IDNMSK_CNKHDR_CONFIG_MATCH          0x30        // Data/Configuration crosscheck
